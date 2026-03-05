@@ -1,0 +1,23 @@
+#!/bin/bash
+# Build-phase entry point: compile the target and submit build + src outputs.
+set -e
+
+# Run the standard oss-fuzz compile
+compile
+
+# Submit build artifacts (harness binaries, etc.)
+libCRS submit-build-output "$OUT" build
+
+# Submit source tree for later analysis
+# Find the git repo root under $SRC, or use $SRC directly
+if [ -d "$SRC/.git" ]; then
+    libCRS submit-build-output "$SRC" src
+else
+    # Look for a git repo one level deep
+    REPO_DIR=$(find "$SRC" -maxdepth 2 -name ".git" -type d -print -quit 2>/dev/null | xargs dirname 2>/dev/null || true)
+    if [ -n "$REPO_DIR" ]; then
+        libCRS submit-build-output "$SRC" src
+    else
+        libCRS submit-build-output "$SRC" src
+    fi
+fi

@@ -123,14 +123,32 @@ env_tokens = [
     ("AZURE_AI_API_KEY", "azure-ai-token"),
     ("AZURE_AI_API_BASE", "azure-ai-api"),
 ]
-TOKENS_ETC = Path(pathlib.Path((CRSROOT / "../tokens_etc")).absolute())
-for env_var, filename in env_tokens:
-    if not os.environ.get(env_var):
-        with open(TOKENS_ETC / filename) as f:
-            os.environ[env_var] = f.read().strip()
 
-_ = os.environ.setdefault("AZURE_API_VERSION", "2024-12-01-preview")
-_ = os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", (TOKENS_ETC / "application_default_credentials.json").as_posix())
+# oss-crs mode: use LiteLLM proxy instead of direct API keys
+ROBODUCK_MODE = os.environ.get("ROBODUCK_MODE")
+OSS_CRS_LLM_API_URL = os.environ.get("OSS_CRS_LLM_API_URL")
+OSS_CRS_LLM_API_KEY = os.environ.get("OSS_CRS_LLM_API_KEY")
+
+if OSS_CRS_LLM_API_URL:
+    # Configure litellm to route through the oss-crs LiteLLM proxy
+    litellm.api_base = OSS_CRS_LLM_API_URL
+    if OSS_CRS_LLM_API_KEY:
+        litellm.api_key = OSS_CRS_LLM_API_KEY
+    # Set a dummy OPENAI_API_KEY so litellm doesn't complain
+    _ = os.environ.setdefault("OPENAI_API_KEY", OSS_CRS_LLM_API_KEY or "oss-crs-proxy")
+    _ = os.environ.setdefault("ANTHROPIC_API_KEY", OSS_CRS_LLM_API_KEY or "oss-crs-proxy")
+else:
+    TOKENS_ETC = Path(pathlib.Path((CRSROOT / "../tokens_etc")).absolute())
+    for env_var, filename in env_tokens:
+        if not os.environ.get(env_var):
+            try:
+                with open(TOKENS_ETC / filename) as f:
+                    os.environ[env_var] = f.read().strip()
+            except FileNotFoundError:
+                pass  # token file not available (e.g. in oss-crs mode)
+
+    _ = os.environ.setdefault("AZURE_API_VERSION", "2024-12-01-preview")
+    _ = os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", (TOKENS_ETC / "application_default_credentials.json").as_posix())
 
 # for anthropic models
 HEADERS = {'anthropic-beta': 'tools-2024-05-16'}

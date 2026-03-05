@@ -43,7 +43,7 @@ SILENCE_BUILDS = bool(os.getenv("SILENCE_BUILDS", False))
 DEDUPE_FRAMES_C = 5
 DEDUPE_FRAMES_JAVA = 14
 
-RUNNER_IMAGE = "ghcr.io/aixcc-finals/base-runner-debug:v1.3.0"
+RUNNER_IMAGE = os.getenv("CRS_RUNNER_IMAGE", "ghcr.io/aixcc-finals/base-runner-debug:v1.3.0")
 
 POV_BAD_ERROR = "the PoV did not cause a crash"
 POV_NO_REPRO = "the PoV did not trigger at HEAD"
@@ -632,6 +632,14 @@ class Project:
         using_bear: bool = False,
         scope: Optional[docker.DockerScope] = None,
     ) -> Result[BuildArtifacts]:
+        # In oss-crs mode, we only have pre-built artifacts. If the requested
+        # config wasn't pre-populated, we can't build it (no Docker build image).
+        if config.ROBODUCK_MODE:
+            return Err(BuildError(
+                f"oss-crs mode: cannot build config {build_config} "
+                f"(only pre-built artifacts are available)"
+            ))
+
         with config.telem_tracer.start_as_current_span("build", attributes={"crs.action.category": "building"}, record_exception=False) as span:
             span.set_attributes({
                 "crs.debug.build.sanitizer": build_config.SANITIZER,

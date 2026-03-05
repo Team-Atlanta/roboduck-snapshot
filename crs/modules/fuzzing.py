@@ -17,7 +17,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Collection, Optional
 from opentelemetry import trace
 
 from crs.common.constants import SANITIZER_VARS
-from crs.config import telem_tracer, metrics, CACHE_DIR, CORPUS_SAMPLE, CRS_BLOB_ENDPOINT, CRS_DEDUP_MON
+from crs.config import telem_tracer, metrics, CACHE_DIR, CORPUS_SAMPLE, CRS_BLOB_ENDPOINT, CRS_DEDUP_MON, ROBODUCK_MODE
 from crs.common.alru import async_once, alru_cache
 from crs.common.types import CRSError, Result, Ok, Err, POVTarget
 from crs.common.utils import finalize, require, requireable, scoped_pipe, only_ok
@@ -210,6 +210,12 @@ class CorpusManager:
     @telem_tracer.start_as_current_span("corpus_match", record_exception=False)
     @requireable
     async def match_corpus(self, artifacts: BuildArtifacts) -> Result[tuple[list[str], dict[str, bytes]]]:
+        # In oss-crs mode, skip corpus matching (requires Azure blob storage).
+        # The target's seed corpus is already available via the build phase.
+        if ROBODUCK_MODE:
+            logger.info("oss-crs mode: skipping corpus match (no Azure blob storage)")
+            return Ok(([], {}))
+
         try:
             async with (
                 CORPUS_MATCH_SEM,

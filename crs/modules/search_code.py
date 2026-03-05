@@ -171,7 +171,9 @@ class ClangSearcher:
         for harness in require(await self.proj.init_harness_info()):
             # harness.source is relative to /src, so we always have parts[0]
             # if the fuzzer is /src/fuzzer.c that will get included by this as well
-            includeable_paths.add(Path("/src", Path(harness.source).parts[0]).as_posix())
+            source_parts = Path(harness.source).parts if harness.source else ()
+            if source_parts:
+                includeable_paths.add(Path("/src", source_parts[0]).as_posix())
 
 
         try:

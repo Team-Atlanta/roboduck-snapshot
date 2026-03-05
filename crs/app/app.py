@@ -14,7 +14,7 @@ from typing import Any, Awaitable, Callable, Optional, Iterable, TypedDict
 from opentelemetry import trace
 
 
-from crs.config import telem_tracer, metrics, MODEL_MAP
+from crs.config import telem_tracer, metrics, MODEL_MAP, ROBODUCK_MODE
 from crs.agents import branch_flipper, diff_analyzer, generate_kaitai, pov_producer, produce_patch, triage, vuln_analyzer, harness_input_decoder
 from crs.app import api_task
 from crs.app.app_meta import running_crs
@@ -237,7 +237,11 @@ class CRS:
         self.counterdb = CounterDB()
         self.bgworkers_waiting: dict[project.Task, asyncio.Event] = defaultdict(asyncio.Event)
         self.bgworkers: dict[project.Task, BackgroundWorker] = {}
-        self.submitter = Submitter(db=self.productsdb)
+        if ROBODUCK_MODE:
+            from crs.app.oss_crs_submitter import OSSCRSSubmitter
+            self.submitter = OSSCRSSubmitter(db=self.productsdb)  # type: ignore[assignment]
+        else:
+            self.submitter = Submitter(db=self.productsdb)
         self.vuln_quantiles: dict[uuid.UUID, QuantileEstimator] = {}
         self.spend_limiters: dict[uuid.UUID, SpendLimiter] = {}
         self.exit_stacks: dict[uuid.UUID, contextlib.AsyncExitStack] = {}
@@ -290,6 +294,9 @@ class CRS:
         dbtask = await self.taskdb.get_task(task_id)
         if dbtask is None:
             return Err(CRSError(f"missing task data for task with {task_id=}"))
+        if ROBODUCK_MODE:
+            from crs.app.oss_crs_task import oss_crs_to_task
+            return await oss_crs_to_task(dbtask)
         return await api_task.api_to_crs_task(dbtask)
 
     async def task_from_id(self, task_id: uuid.UUID) -> Result[project.Task]:
