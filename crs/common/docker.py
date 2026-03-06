@@ -269,10 +269,10 @@ async def run(
         bind_ip = "127.0.0.1" if docker_hostname == "127.0.0.1" else "0.0.0.0"
         port_args = [f"-p{bind_ip}::{port}" for port in ports] if ports else []
 
-        # invariant: cid == None <=> the container is not started
+        # invariant: not cid <=> the container is not started
         cid: Optional[str] = None
         async def cleanup():
-            if cid is None:
+            if not cid:
                 return
             proc = await scope.exec(
                 "docker", "kill", cid,
@@ -313,9 +313,9 @@ async def run(
         # only needed because pyright doesn't see the potential update in launch_container()
         cid = cast(Optional[str], cid)
 
-        # if we reach here and cid is None, `docker run` must have exited -- not much we can do
-        if cid is None:
-            raise RuntimeError("docker run did not write container ID")
+        # if we reach here and cid is None/empty, `docker run` must have exited -- not much we can do
+        if not cid:
+            raise CRSError("docker run did not write container ID")
 
         logger.info(f"started docker {image} cid {cid}")
         # wait until we're sure the container is running

@@ -61,10 +61,72 @@
 - **Bottleneck**: Docker image pulls inside DinD with vfs driver (~3min for base-runner, python_sandbox, joern)
 - **Not validated**: POV submission (timeout before triage completed)
 
-## How to Run E2E Test
+## E2E Test Run #2 (2026-03-06)
+
+### Setup
 ```bash
 cd ~/oss-crs
-uv run oss-crs prepare --compose-file /path/to/roboduck/oss-crs/example/compose.yaml
-uv run oss-crs build-target --compose-file ... --fuzz-proj-path ~/oss-fuzz/projects/aixcc/c/sanity-mock-c-delta-01
-ANTHROPIC_API_KEY="..." uv run oss-crs run --compose-file ... --fuzz-proj-path ... --target-harness fuzz_process_input_header --timeout 600
+COMPOSE=/home/hanqing/agents/CRSes/aixcc-teams/roboduck/oss-crs/example/compose.yaml
+TARGET=~/oss-fuzz/projects/aixcc/c/sanity-mock-c-delta-01
+SOURCE=/home/hanqing/agents/benchmarks/source_code/mock-c
+
+uv run oss-crs prepare --compose-file $COMPOSE
+uv run oss-crs build-target --compose-file $COMPOSE --fuzz-proj-path $TARGET --target-source-path $SOURCE
+ANTHROPIC_API_KEY="..." uv run oss-crs run --compose-file $COMPOSE --fuzz-proj-path $TARGET --target-source-path $SOURCE --target-harness fuzz_process_input_header --timeout 600
 ```
+
+### Results
+- **prepare**: SUCCESS
+- **build-target**: SUCCESS (requires `--target-source-path` for AIxCC projects with private `main_repo`)
+- **run**: TIMEOUT after 600s, exit 1
+
+### What Worked
+- DinD startup (overlay2→vfs fallback, ~3s)
+- Image pulls (base-runner ~90s, python_sandbox, joern)
+- Task injection + project creation from /src + /out
+- Harness source discovery (`fuzz/fuzz_process_input_header.c`)
+- CRS main loop + FastAPI task_server
+- LLM calls via litellm → claude-sonnet-4-6 (multiple successful calls)
+- Agent tool calls: find_references, read_definition, read_source, gdb_exec, get_output
+- HarnessInputEncoderAgent created and ran
+- Fuzzing: found multiple crashes
+
+### What Failed
+| Issue | Location | Severity |
+|-------|----------|----------|
+| `ExceptionGroup` in fuzzing TaskGroup | `fuzzing.py:1005` | HIGH — worker crash, auto-restarts but loses state |
+| `timeout waiting for container spawn` | `docker.py:307` | HIGH — vfs slow, base-runner spawn times out |
+| `failed to write vfs: failed to mkdir at /src` | `docker.py:495` | HIGH — Joern CPG build fails |
+| POV submission empty | SUBMIT_DIR/povs/ | HIGH — triage→POV→submit pipeline never completes |
+| `model claude-sonnet-4-6 missing from concurrency!` | `llm_api.py:386` | MEDIUM — concurrency config |
+| `LAUNCH_INFER` fails (bear build) | `project.py:771` | LOW — known oss-crs limitation |
+| `debug/coverage build` fails | `debugger.py:186`, `coverage.py:332` | LOW — no rebuild in oss-crs |
+
+## Fixes Applied (2026-03-06 session 2)
+
+### 1. Concurrency config for claude-sonnet-4-6 (llm_api.py)
+- Added `claude-sonnet-4-6` → `claude-4-sonnet` and `claude-opus-4-6` → `claude-4-opus` to `DUPE_MODEL_MAP`
+- Result: Warning gone ✅
+
+### 2. Background TaskGroup crash (fuzzing.py)
+- Changed `asyncio.TaskGroup()` → `ExceptAndLogTaskGroup()` for `background_taskgroup` at line 838
+- Result: `ExceptionGroup` crash eliminated (0 occurrences vs 1 before) ✅
+
+### 3. Empty cid handling (docker.py + joern.py)
+- Changed `if cid is None:` → `if not cid:` in `docker.py:317` to catch empty string cid
+- Added `except RuntimeError` handlers in `joern.py` build_cpg and run_query
+- Result: Joern container starts with proper cid, vwrite_layers succeeds, joern-parse runs ✅
+
+## E2E Test Run #3 (2026-03-06, post-fix)
+- ExceptionGroup: **0** (was 1) ✅
+- Concurrency warning: **0** (was many) ✅
+- Joern CPG build: **started successfully** (was failing) ✅
+- Crashes found: 4
+- POV submitted: 0 (pipeline didn't complete in 10min)
+- AINALYSIS: failed (no results, separate issue)
+
+### Remaining Issues
+1. **DinD/vfs container startup is very slow** (~3min for base-runner) — biggest bottleneck
+   - Consider pre-pulling images during prepare phase, or baking them into the runner image
+2. **AINALYSIS fails** — `ainalysis failed to produce any results` — needs investigation
+3. **POV pipeline not completing** — needs longer timeout or faster container starts to validate

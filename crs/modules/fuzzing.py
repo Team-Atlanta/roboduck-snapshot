@@ -20,7 +20,7 @@ from crs.common.constants import SANITIZER_VARS
 from crs.config import telem_tracer, metrics, CACHE_DIR, CORPUS_SAMPLE, CRS_BLOB_ENDPOINT, CRS_DEDUP_MON, ROBODUCK_MODE
 from crs.common.alru import async_once, alru_cache
 from crs.common.types import CRSError, Result, Ok, Err, POVTarget
-from crs.common.utils import finalize, require, requireable, scoped_pipe, only_ok
+from crs.common.utils import finalize, require, requireable, scoped_pipe, only_ok, ExceptAndLogTaskGroup
 from crs.modules.project import BuildArtifacts, BuildConfig, CrashResult, Harness, Project, Task, DEDUPE_FRAMES_C, DEDUPE_FRAMES_JAVA
 from crs.common import docker
 
@@ -835,7 +835,7 @@ class FuzzHarnessManager:
             "sanitizer": self.build_artifacts.build_config.SANITIZER,
         }
         async with (time_counter_block(fuzz_time_counter, attributes=attrs),
-                    asyncio.TaskGroup() as background_taskgroup):
+                    ExceptAndLogTaskGroup() as background_taskgroup):
 
             @async_once
             async def match_corp_once():

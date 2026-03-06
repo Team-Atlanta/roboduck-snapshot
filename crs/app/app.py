@@ -263,13 +263,14 @@ class CRS:
         self.workdb.register_work_callback(WorkType.ANALYZE_VULN, self.analyze_vuln)
         self.workdb.register_work_callback(WorkType.PRODUCE_POV, self.produce_pov)
         self.workdb.register_work_callback(WorkType.PRODUCE_POV_HINT, self.produce_pov_if_hit)
-        self.workdb.register_work_callback(WorkType.PATCH_VULN, self.patch_vuln)
+        if not ROBODUCK_MODE:
+            self.workdb.register_work_callback(WorkType.PATCH_VULN, self.patch_vuln)
+            self.workdb.register_work_callback(WorkType.BUNDLE_PATCH, self.bundle_patch)
+            self.workdb.register_work_callback(WorkType.BUNDLE_PATCH_NO_POV, self.bundle_patch_no_pov)
         self.workdb.register_work_callback(WorkType.TRIAGE_POV, self.triage_pov)
         self.workdb.register_work_callback(WorkType.PROCESS_COVERAGE, self.process_coverage)
         self.workdb.register_work_callback(WorkType.TRIAGE_FUZZ_CRASH, self.process_crash)
         self.workdb.register_work_callback(WorkType.BUNDLE_POV, self.bundle_pov)
-        self.workdb.register_work_callback(WorkType.BUNDLE_PATCH, self.bundle_patch)
-        self.workdb.register_work_callback(WorkType.BUNDLE_PATCH_NO_POV, self.bundle_patch_no_pov)
         self.workdb.register_work_callback(WorkType.BUNDLE_SARIF, self.bundle_sarif)
         self.workdb.register_work_callback(WorkType.SUBMIT_BUNDLE, self.submit_bundle)
         self.workdb.register_work_callback(WorkType.PRE_FLIP_BRANCH, self.pre_flip_branch)
@@ -1118,14 +1119,15 @@ class CRS:
                 )
             )
         if new:
-            submits.append(
-                self.workdb.submit_job(
-                    task.task_id,
-                    WorkType.PATCH_VULN,
-                    PatchVulnData(vuln_id=vuln_id, pov_ids=None),
-                    expiration=task.deadline_datetime,
+            if not ROBODUCK_MODE:
+                submits.append(
+                    self.workdb.submit_job(
+                        task.task_id,
+                        WorkType.PATCH_VULN,
+                        PatchVulnData(vuln_id=vuln_id, pov_ids=None),
+                        expiration=task.deadline_datetime,
+                    )
                 )
-            )
             if not skip_pov:
                 submits.append(self.workdb.submit_job(
                     task.task_id,
@@ -1424,6 +1426,8 @@ class CRS:
         return Ok(None)
 
     async def schedule_new_patcher(self, task: project.Task, vuln_id: int, patched_povs: list[int], unpatched_povs: list[int]):
+        if ROBODUCK_MODE:
+            return
         # mix-in one of the patched povs (if it exists) near the beginning (so it is displayed to the agent)
         pov_ids = patched_povs[:1] + unpatched_povs
         await self.workdb.submit_job(

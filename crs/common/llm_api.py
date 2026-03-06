@@ -59,20 +59,24 @@ DUPE_MODEL_MAP = {
     "claude-3-7-sonnet-20250219": "claude-3-7-sonnet",
     "claude-sonnet-4-20250514": "claude-4-sonnet",
     "anthropic/claude-sonnet-4-20250514": "claude-4-sonnet",
+    "claude-sonnet-4-6": "claude-4-sonnet",
+    "anthropic/claude-sonnet-4-6": "claude-4-sonnet",
+    "claude-opus-4-6": "claude-4-opus",
+    "anthropic/claude-opus-4-6": "claude-4-opus",
     "claude-opus-4-20250514": "claude-4-opus",
     "anthropic/claude-opus-4-20250514": "claude-4-opus",
     "claude-3-7-sonnet-20250219-thinking-low": "claude-3-7-sonnet",
     "claude-3-7-sonnet-20250219-thinking-medium": "claude-3-7-sonnet",
     "claude-3-7-sonnet-20250219-thinking-high": "claude-3-7-sonnet",
-    "claude-sonnet-4-20250514-thinking-low": "claude-sonnet-4",
-    "claude-sonnet-4-20250514-thinking-medium": "claude-sonnet-4",
-    "claude-sonnet-4-20250514-thinking-high": "claude-sonnet-4",
+    "claude-sonnet-4-20250514-thinking-low": "claude-4-sonnet",
+    "claude-sonnet-4-20250514-thinking-medium": "claude-4-sonnet",
+    "claude-sonnet-4-20250514-thinking-high": "claude-4-sonnet",
     "claude-3-7-thinking-low": "claude-3-7-sonnet",
     "claude-3-7-thinking-medium": "claude-3-7-sonnet",
     "claude-3-7-thinking-high": "claude-3-7-sonnet",
-    "claude-sonnet-4-thinking-low": "claude-sonnet-4",
-    "claude-sonnet-4-thinking-medium": "claude-sonnet-4",
-    "claude-sonnet-4-thinking-high": "claude-sonnet-4",
+    "claude-sonnet-4-thinking-low": "claude-4-sonnet",
+    "claude-sonnet-4-thinking-medium": "claude-4-sonnet",
+    "claude-sonnet-4-thinking-high": "claude-4-sonnet",
     "claude-3-haiku-20240307": "claude-3-haiku",
     "claude-3-5-haiku-20241022": "claude-3-5-haiku",
 
@@ -89,7 +93,7 @@ DUPE_MODEL_MAP = {
     "gpt-4o-mini-2024-07-18": "gpt-4o-mini",
 }
 
-CLAUDE_THINKING_SUPPORTED_MODELS = ["claude-sonnet-4", "claude-3-7-sonnet"]
+CLAUDE_THINKING_SUPPORTED_MODELS = ["claude-4-sonnet", "claude-3-7-sonnet"]
 
 BUDGET_TOKEN_PAIR = {
     "low":1024,
