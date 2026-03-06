@@ -26,9 +26,9 @@
 
 ## Partially Implemented: Delta Mode
 
-**Status**: DeltaTask created, ANALYZE_DIFF works, base POV comparison disabled
-**Location**: `crs/app/oss_crs_task.py`
-**What works**: DeltaTask is created with the diff text from `OSS_CRS_DIFF_PATH`. The LLM-based `ANALYZE_DIFF` pipeline analyzes the diff for introduced vulnerabilities. Fuzzing also runs on the post-diff source.
+**Status**: E2E validated — DeltaTask created, fuzzing + triage + LLM analysis working
+**Location**: `crs/app/oss_crs_task.py`, `oss-crs/scripts/inject_task.py`
+**What works**: `inject_task.py` auto-detects delta mode from `$OSS_CRS_FETCH_DIR/diffs/ref.diff` (framework-standard). DeltaTask is created with the diff text. Fuzzing finds crashes, triage processes them, LLM agents analyze vulnerabilities. Base project build failure handled gracefully in `helpers.py`.
 **Limitation**: Base project has no build artifacts, so `DeltaTask.test_pov_contents()` cannot verify regressions — all POVs are accepted. Proper base comparison requires builder sidecar integration (for pre-diff compilation).
 
 ## Not Yet Implemented: Coverage/Debug Builds
@@ -51,26 +51,30 @@
 
 ## E2E Validation Status
 
-**Status**: Fuzzing pipeline validated
-**Date**: 2026-03-05
+**Status**: Full mode + Delta mode validated
+**Date**: 2026-03-06
 **Target**: `sanity-mock-c-delta-01` / `fuzz_process_input_header`
 
 **What works**:
 - DinD with vfs fallback
-- Task injection via `inject_task.py`
+- Task injection via `inject_task.py` (auto-detects delta mode)
 - Harness source discovery (`fuzz/fuzz_process_input_header.c`)
-- Fuzzer launch and crash discovery (55 crashes in ~30s)
-- Triage pipeline starts processing POVs
-- LiteLLM proxy integration
+- Fuzzer launch and crash discovery (51+ crashes in ~20s)
+- Triage pipeline processes POVs (dedup + vuln analysis)
+- LiteLLM proxy integration with Claude models
+- LLM-based triage agents (`TriageAgent`, `CRSVulnAnalyzerAgent`) make tool calls
+- DeltaTask created from `$OSS_CRS_FETCH_DIR/diffs/ref.diff`
+- Base project build failure handled gracefully (skips base comparison)
+- Classifier works with Claude via text-based fallback (no logprobs)
 
 **What fails gracefully**:
 - `LAUNCH_INFER` — no infer binary (documented above)
 - Coverage/debug builds — only pre-built artifacts available
 - Bear build — not available in oss-crs mode
+- Base project builds in DeltaTask — logs warning, skips comparison
 
 **Not yet validated**:
-- POV submission via OSSCRSSubmitter (triage didn't complete before timeout)
-- LLM-based analysis (LAUNCH_AINALYSIS) — needs longer timeout
+- POV submission end-to-end (triage runs but no POVs submitted yet — likely needs longer timeout or classifier tuning)
 - Seed submission
 
 ## Not Yet Tested: Unit Tests

@@ -112,8 +112,13 @@ class BulkCrashWorker(BulkTaskWorker[ProcessFuzzCrashData]):
         builds = (await self.proj.build_all()).unwrap()
         harnesses = (await self.proj.init_harness_info()).unwrap()
         if self.base_proj:
-            base_builds = (await self.base_proj.build_all()).unwrap()
-            _ = (await self.base_proj.init_harness_info()).unwrap()
+            match await self.base_proj.build_all():
+                case Ok(bb):
+                    base_builds = bb
+                    _ = (await self.base_proj.init_harness_info()).unwrap()
+                case Err(e):
+                    logger.warning(f"base project build failed ({e}); skipping base comparison")
+                    base_builds = None
         else:
             base_builds = None
 

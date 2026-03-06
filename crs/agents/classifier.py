@@ -84,11 +84,13 @@ class Classifier[K](AgentGeneric[ClassifierResult[K]], ABC):
     @final
     @property
     def logprobs(self):
-        return True
+        return self._supports_logprobs
 
     @final
     @property
     def top_logprobs(self):
+        if not self._supports_logprobs:
+            return None
         # assume there are ~2 possible tokens to continue any given option
         # but, the openai API rejects values above 20
         return min(20, 2 * len(self.options))
@@ -101,24 +103,24 @@ class Classifier[K](AgentGeneric[ClassifierResult[K]], ABC):
     @final
     @property
     def max_completion_tokens(self):
+        if not self._supports_logprobs:
+            # Non-logprobs models may produce a few tokens
+            return 10
         # Since we assert all options are single-token, we only need 1 token
         return 1
 
     @property
+    def _supports_logprobs(self) -> bool:
+        return "gpt" in super().model
+
+    @property
     def model(self):
         """
-        Calls the base class model property to support model config maps,
-        but overrides it to gpt-4o-mini if it returns an unsupported model
+        Calls the base class model property to support model config maps.
+        Non-GPT models (e.g. Claude) don't support logprobs, but we handle
+        that in _iter by falling back to text-based classification.
         """
-        configured = super().model
-        # only openai gpt models support logprobs
-        if "gpt" not in configured:
-            logger.warning(
-                f"{self.__class__.__name__} created with unsupported classifier model: {configured}. "
-                "Overriding with gpt-4o-mini."
-            )
-            return "gpt-4o-mini-2024-07-18"
-        return configured
+        return super().model
 
     def get_result(self, msg: Message) -> None:
         raise NotImplementedError # should never be called because we override _run
@@ -138,19 +140,46 @@ class Classifier[K](AgentGeneric[ClassifierResult[K]], ABC):
         assert max_iters == 1, "cannot change max_iters in Classifier"
         completion = (await self.completion()).unwrap() # no choice but to unwrap
         choice = completion.choices[0]
-        logprobs = choice.logprobs
-        assert logprobs is not None
-        assert len(logprobs.content) == 1, "logprobs should have only one content"
 
-        # compute logprob of each classifier option
-        keys = {str(k): k for k in self.options}
-        for k in keys:
-            assert len(await asyncio.to_thread(split_by_tokens, self.model, k)) == 1, "All options must be single-token"
-        
-        logger.debug("classifier logprobs: {logprobs}", logprobs=logprobs)
+        if self._supports_logprobs:
+            logprobs = choice.logprobs
+            assert logprobs is not None
+            assert len(logprobs.content) == 1, "logprobs should have only one content"
 
-        key_probs = {keys[x.token]: math.exp(x.logprob) for x in logprobs.content[0].top_logprobs if x.token in keys}
-        _res = {k: key_probs.get(k, 0) for k in self.options}
+            # compute logprob of each classifier option
+            keys = {str(k): k for k in self.options}
+            for k in keys:
+                assert len(await asyncio.to_thread(split_by_tokens, self.model, k)) == 1, "All options must be single-token"
+
+            logger.debug("classifier logprobs: {logprobs}", logprobs=logprobs)
+
+            key_probs = {keys[x.token]: math.exp(x.logprob) for x in logprobs.content[0].top_logprobs if x.token in keys}
+            _res = {k: key_probs.get(k, 0) for k in self.options}
+        else:
+            # Non-logprobs fallback: parse the text response and assign p=1.0
+            # to the matched option. Works with Claude and other non-GPT models.
+            text = (choice.message.content or "").strip()
+            keys = {str(k): k for k in self.options}
+            matched = keys.get(text)
+            if matched is None:
+                # Try to find the option token anywhere in the response
+                for token, key in keys.items():
+                    if token in text:
+                        matched = key
+                        break
+            if matched is None:
+                # Case-insensitive search
+                text_lower = text.lower()
+                for token, key in keys.items():
+                    if token.lower() in text_lower:
+                        matched = key
+                        break
+            if matched is None:
+                # Default to last option (typically 'NEW' for dedup)
+                matched = list(self.options)[-1]
+                logger.warning(f"classifier text fallback: no match in '{text}', defaulting to {matched}")
+            _res = {k: (1.0 if k == matched else 0.0) for k in self.options}
+
         res: ClassifierResult[K] = ClassifierResult(self.re_normalize_dict(_res))
         logger.info(f"classifier result: {str(res)}")
         self._append_msg(completion.choices[0].message)
