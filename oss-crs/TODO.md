@@ -24,11 +24,12 @@
 **Location**: `crs/modules/fuzzing.py` — `match_corpus()` returns empty immediately when `ROBODUCK_MODE` is set
 **Impact**: Fuzzers start with only the target's seed corpus (from `/out`), not the Azure-hosted pre-existing corpus collection. May reduce initial fuzzing effectiveness.
 
-## Not Yet Implemented: Delta Mode
+## Partially Implemented: Delta Mode
 
-**Status**: Stubbed — falls back to full task
-**Location**: `crs/app/oss_crs_task.py:166` — logs warning, runs as FullTask
-**Impact**: Delta-mode tasks (with a diff) lose the base-project comparison. POV dedup against pre-existing crashes won't work. Needs builder sidecar integration for pre/post builds.
+**Status**: DeltaTask created, ANALYZE_DIFF works, base POV comparison disabled
+**Location**: `crs/app/oss_crs_task.py`
+**What works**: DeltaTask is created with the diff text from `OSS_CRS_DIFF_PATH`. The LLM-based `ANALYZE_DIFF` pipeline analyzes the diff for introduced vulnerabilities. Fuzzing also runs on the post-diff source.
+**Limitation**: Base project has no build artifacts, so `DeltaTask.test_pov_contents()` cannot verify regressions — all POVs are accepted. Proper base comparison requires builder sidecar integration (for pre-diff compilation).
 
 ## Not Yet Implemented: Coverage/Debug Builds
 

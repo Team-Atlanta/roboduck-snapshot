@@ -22,7 +22,8 @@ from crs.modules.project import (
 )
 from crs.modules.coverage import CoverageAnalyzer
 from crs.modules.debugger import Debugger
-from crs.task_server.models import TaskDetail, TaskType
+from crs.task_server.models import TaskDetail, TaskType, SourceType
+from crs.app.api_task import rewrite_diff
 from crs import config
 
 from crs_rust import logger
@@ -183,14 +184,43 @@ async def oss_crs_to_task(task_detail: TaskDetail) -> Result[project.Task]:
     try:
         proj = await _create_project_from_local(task_detail)
 
-        # NOTE: DeltaTask requires a proper base project (pre-patch version) to
-        # compare POV results. In oss-crs mode, we don't have the base project
-        # yet (would need the builder sidecar to produce both pre/post builds).
-        # For now, always use FullTask. Delta support will be added later when
-        # we integrate the oss-crs builder sidecar (snapshot mode).
         if task_detail.type == TaskType.TaskTypeDelta:
-            logger.warning("Delta task requested in oss-crs mode; "
-                         "running as full task (delta not yet supported)")
+            diff_text = _read_diff_from_sources(task_detail)
+            if diff_text:
+                # Base project: same source, NO build artifacts.
+                # Without builds, DeltaTask.test_pov_contents() gets Err from
+                # base.run_pov() → all POVs are accepted (can't verify regressions
+                # without separately compiled base binaries).
+                base_proj = Project(
+                    project_dir=proj.project_dir,
+                    data_dir=proj.data_dir,
+                    vfs=proj.vfs.fork(),
+                    info=proj.info,
+                    ossfuzz_hash=proj.ossfuzz_hash,
+                    harnesses=proj.harnesses,
+                    workdir=proj._working_dir,
+                )
+
+                # Rewrite diff paths to match project VFS layout
+                match await rewrite_diff(proj, diff_text):
+                    case Ok(rewritten):
+                        diff_text = rewritten
+                    case Err(e):
+                        logger.warning(f"Failed to rewrite diff: {e}; using raw diff")
+
+                logger.info(f"Created DeltaTask with {len(diff_text)} byte diff")
+                return Ok(project.DeltaTask(
+                    task_detail.task_id,
+                    task_detail.deadline,
+                    proj,
+                    CoverageAnalyzer(proj),
+                    Debugger(proj),
+                    task_detail.metadata,
+                    base_proj,
+                    diff_text,
+                ))
+            else:
+                logger.warning("Delta task requested but no diff found; running as full task")
 
         return Ok(project.Task(
             task_detail.task_id,
@@ -203,3 +233,16 @@ async def oss_crs_to_task(task_detail: TaskDetail) -> Result[project.Task]:
     except Exception as e:
         logger.exception(f"Failed to create oss-crs task: {e}")
         return Err(CRSError(f"failed to create oss-crs task: {e}"))
+
+
+def _read_diff_from_sources(task_detail: TaskDetail) -> str | None:
+    """Extract diff text from oss-crs task sources."""
+    for source in task_detail.source:
+        if source.type == SourceType.SourceTypeDiff:
+            diff_path = source.url.removeprefix("file://")
+            if os.path.exists(diff_path):
+                with open(diff_path) as f:
+                    return f.read()
+            logger.warning(f"Diff source URL {source.url} points to non-existent path {diff_path}")
+            return None
+    return None

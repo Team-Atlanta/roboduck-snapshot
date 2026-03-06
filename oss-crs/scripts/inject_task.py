@@ -6,19 +6,23 @@ This replaces the HTTP API task submission flow (api_to_crs_task) for oss-crs mo
 Instead of downloading tarballs from URLs, it creates TaskDetail records that point
 to the pre-built artifacts and source code already on disk.
 
-Environment variables read:
+Environment variables read (set by oss-crs framework):
   OSS_CRS_TARGET          — target project name (e.g. "libxml2")
   OSS_CRS_TARGET_HARNESS  — harness binary name (e.g. "xml")
+  OSS_CRS_FETCH_DIR       — fetch directory with diffs, bug-candidates, etc.
+  OSS_CRS_TIMEOUT         — timeout in seconds (default: 4 hours)
   FUZZING_LANGUAGE         — language (c, c++, jvm, ...)
   SANITIZER                — sanitizer (address, memory, ...)
   ARCHITECTURE             — architecture (x86_64)
   FUZZING_ENGINE           — engine (libfuzzer)
-  OSS_CRS_CPUSET           — allocated CPU cores
-  OSS_CRS_MEMORY_LIMIT     — memory limit
 
 Files on disk (from build phase):
   /out   — compiled harness binaries + build artifacts
   /src   — source tree
+
+Delta mode auto-detection:
+  If $OSS_CRS_FETCH_DIR/diffs/ref.diff exists → delta mode
+  Otherwise → full mode
 """
 import asyncio
 import json
@@ -35,13 +39,23 @@ from crs.task_server.db import TaskDB
 from crs.task_server.models import Task, TaskDetail, TaskType, SourceDetail, SourceType
 
 
+def _find_diff_file() -> str | None:
+    """Check for diff file provided by oss-crs framework via OSS_CRS_FETCH_DIR."""
+    fetch_dir = os.environ.get("OSS_CRS_FETCH_DIR", "")
+    if fetch_dir:
+        diff_path = os.path.join(fetch_dir, "diffs", "ref.diff")
+        if os.path.exists(diff_path):
+            return diff_path
+    return None
+
+
 def make_task_detail() -> TaskDetail:
     """Create a TaskDetail from oss-crs environment variables."""
     target = os.environ.get("OSS_CRS_TARGET", "unknown")
     harness = os.environ.get("OSS_CRS_TARGET_HARNESS", "")
-    task_type_str = os.environ.get("OSS_CRS_TARGET_MODE", "full")
 
-    task_type = TaskType.TaskTypeDelta if task_type_str == "delta" else TaskType.TaskTypeFull
+    diff_path = _find_diff_file()
+    task_type = TaskType.TaskTypeDelta if diff_path else TaskType.TaskTypeFull
 
     # Deadline: use timeout from env or default to 4 hours from now
     timeout_s = int(os.environ.get("OSS_CRS_TIMEOUT", str(4 * 3600)))
@@ -66,9 +80,7 @@ def make_task_detail() -> TaskDetail:
         ),
     ]
 
-    # If there's a diff file, add it as a source
-    diff_path = os.environ.get("OSS_CRS_DIFF_PATH")
-    if diff_path and os.path.exists(diff_path):
+    if diff_path:
         sources.append(SourceDetail(
             type=SourceType.SourceTypeDiff,
             url=f"file://{diff_path}",
