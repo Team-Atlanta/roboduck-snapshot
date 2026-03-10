@@ -69,9 +69,9 @@ RUN apt-get update \
        universal-ctags global patchutils rustup musl-tools clang sudo ripgrep wget \
        libssl-dev \
     && rustup default stable \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt update \
-    && apt install -y python3.13 python3.13-dev python3.13-venv \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update --allow-insecure-repositories \
+    && apt install -y --allow-unauthenticated python3.13 python3.13-dev python3.13-venv \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && apt-get autoclean -y \

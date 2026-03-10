@@ -128,5 +128,37 @@ ANTHROPIC_API_KEY="..." uv run oss-crs run --compose-file $COMPOSE --fuzz-proj-p
 ### Remaining Issues
 1. **DinD/vfs container startup is very slow** (~3min for base-runner) — biggest bottleneck
    - Consider pre-pulling images during prepare phase, or baking them into the runner image
-2. **AINALYSIS fails** — `ainalysis failed to produce any results` — needs investigation
-3. **POV pipeline not completing** — needs longer timeout or faster container starts to validate
+2. **POV pipeline not completing** — needs longer timeout or faster container starts to validate
+
+## Delta Mode Implementation (2026-03-06, session 3)
+
+### Changes
+1. **`oss-crs/scripts/inject_task.py`** — Auto-detect delta mode from `$OSS_CRS_FETCH_DIR/diffs/ref.diff` (framework-standard). Removed custom `OSS_CRS_TARGET_MODE` and `OSS_CRS_DIFF_PATH` env vars.
+2. **`crs/app/oss_crs_task.py`** — DeltaTask creation with diff from `_read_diff_from_sources()`. Base project has no builds → POV comparison skipped.
+3. **`crs/app/helpers.py`** — BulkCrashWorker handles base_proj.build_all() Err gracefully instead of crashing.
+4. **`crs/agents/classifier.py`** — Non-GPT model support: text-based fallback when logprobs unavailable (was hardcoding gpt-4o-mini fallback).
+5. **Patching disabled** — 3-level defense in `app.py`: skip callback registration, skip PATCH_VULN job, early-return in schedule_new_patcher.
+
+### oss-crs Framework Bug: Double build_id Normalization
+- `run()` normalizes build_id at line 481, then `build_target()` normalizes again at line 328
+- Build artifacts end up at double-normalized path but run mounts single-normalized path
+- **Fix applied** in `~/oss-crs/oss_crs/src/crs_compose.py`: after `build_target()` returns, re-derive actual build_id via `get_latest_build_id()`
+- Only affects `run` with `--diff` triggering inline build (separate build-target + run is fine)
+- Also: `build-target --diff` CLI crashes with `AssertionError: target_harness must be set` because `build-target` doesn't have `--target-harness` flag. Use `run --diff` instead (which has `--target-harness` and auto-builds).
+
+### Delta Mode E2E Test Results
+- **Command**: `oss-crs run --diff ref.diff --target-harness fuzz_process_input_header --build-id delta-test-06 --timeout 600`
+- **DeltaTask created**: ✅ "Created DeltaTask with 1331 byte diff"
+- **Task type "delta"**: ✅ Verified in oss_crs_task.json
+- **Fuzzing**: ✅ 51+ crashes found
+- **Base project build**: ✅ Warning logged, comparison skipped (no crash)
+- **LLM triage agents**: ✅ Claude-sonnet-4-6 making tool calls (read_source, list_definitions)
+- **Classifier**: ✅ Falls back to text parsing (was crashing with gpt-4o-mini not found)
+- **Vuln analysis**: ✅ `handle_analyzed_vuln: submitting 1 new jobs for vuln_id=1..4`
+- **POV submission**: ❌ 0 POVs in final artifacts (pipeline runs but doesn't complete in 10min)
+
+### Key Learnings
+- AIxCC projects with private `main_repo` in project.yaml need `--target-source-path`
+- `oss-crs run --diff` is the correct flow for delta mode (not separate build-target + run)
+- Classifier logprobs are OpenAI-only; Claude needs text-based fallback
+- The oss-crs framework double-normalizes build_id when run() triggers inline build_target()
