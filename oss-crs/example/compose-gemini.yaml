@@ -1,0 +1,26 @@
+##############################################################################
+#             roboduck with Gemini via LiteLLM proxy                        #
+##############################################################################
+
+run_env: local
+docker_registry: local
+
+oss_crs_infra:
+  cpuset: "0-1"
+  memory: "8G"
+
+roboduck:
+  source:
+    local_path: /home/hanqing/agents/CRSes/aixcc-teams/roboduck
+  cpuset: "2-15"
+  memory: "48G"
+  additional_env:
+    ROBODUCK_MODE: bug-finding
+    MODEL_MAP: /crs/configs/models-oss-crs.toml
+    CRS_RUNNER_IMAGE: gcr.io/oss-fuzz-base/base-runner
+
+llm_config:
+  litellm:
+    mode: internal
+    internal:
+      config_path: /home/hanqing/agents/CRSes/aixcc-teams/roboduck/oss-crs/example/litellm-gemini.yaml

@@ -1,0 +1,12 @@
+model_list:
+  # Route claude-sonnet-4-6 requests to Gemini 2.5 Pro
+  - model_name: claude-sonnet-4-6
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+
+  # Route claude-haiku requests to Gemini 2.5 Flash
+  - model_name: claude-haiku-4-5-20251001
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
