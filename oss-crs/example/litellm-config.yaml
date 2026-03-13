@@ -1,39 +1,34 @@
 model_list:
   # --- Anthropic models ---
-  - model_name: claude-opus-4-20250514
+  - model_name: claude-opus-4-6
     litellm_params:
-      model: anthropic/claude-opus-4-20250514
+      model: anthropic/claude-opus-4-6
       api_key: os.environ/ANTHROPIC_API_KEY
 
-  - model_name: claude-sonnet-4-20250514
+  - model_name: claude-sonnet-4-6
     litellm_params:
-      model: anthropic/claude-sonnet-4-20250514
-      api_key: os.environ/ANTHROPIC_API_KEY
-
-  - model_name: claude-3-5-sonnet-20241022
-    litellm_params:
-      model: anthropic/claude-3-5-sonnet-20241022
+      model: anthropic/claude-sonnet-4-6
       api_key: os.environ/ANTHROPIC_API_KEY
 
   # --- OpenAI models ---
-  - model_name: o3-2025-04-16
+  - model_name: o3
     litellm_params:
-      model: openai/o3-2025-04-16
+      model: openai/o3
       api_key: os.environ/OPENAI_API_KEY
 
-  - model_name: o4-mini-2025-04-16
+  - model_name: o4-mini
     litellm_params:
-      model: openai/o4-mini-2025-04-16
+      model: openai/o4-mini
       api_key: os.environ/OPENAI_API_KEY
 
-  - model_name: gpt-4.1-2025-04-14
+  - model_name: gpt-4.1
     litellm_params:
-      model: openai/gpt-4.1-2025-04-14
+      model: openai/gpt-4.1
       api_key: os.environ/OPENAI_API_KEY
 
-  - model_name: gpt-4o-2024-08-06
+  - model_name: gpt-4o
     litellm_params:
-      model: openai/gpt-4o-2024-08-06
+      model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY
 
   # --- Google models ---
