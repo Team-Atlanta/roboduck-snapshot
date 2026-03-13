@@ -292,7 +292,9 @@ async def run(
             nonlocal cid
             cidfile = td / "cidfile"
             cmd_args = [
-                "docker", "run", "--init", "-i", "--rm", "--platform", "linux/amd64", "--cidfile", cidfile.as_posix(),
+                "docker", "run", "--init", "-i", "--rm", "--platform", "linux/amd64",
+                "--cgroupns=host",
+                "--cidfile", cidfile.as_posix(),
                 *env_args, *mount_args, *port_args, image, "sleep", "infinity"
             ]
             proc = await scope.exec(*cmd_args)

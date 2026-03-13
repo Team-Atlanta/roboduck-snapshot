@@ -1,4 +1,10 @@
 model_list:
+  # Route claude-opus-4-6 requests to Gemini 2.5 Pro (deep reasoning tier)
+  - model_name: claude-opus-4-6
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+
   # Route claude-sonnet-4-6 requests to Gemini 2.5 Pro
   - model_name: claude-sonnet-4-6
     litellm_params:

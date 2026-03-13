@@ -1,20 +1,29 @@
 # Model map for oss-crs mode — all models go through the LiteLLM proxy.
-# No Azure models; classifiers use sonnet since we don't have OpenAI structured output.
-AddDebugPrintsAgent = ["claude-sonnet-4-6"]
+# Three tiers: opus (deep reasoning), sonnet (main workhorse), haiku (classifiers).
+# Mirrors original models-final.toml role assignment with Anthropic-only models.
+
+# --- Deep reasoning (original: o3, opus-4, gemini-2.5-pro) ---
+SourceQuestionsAgent = ["claude-opus-4-6"]
+HarnessInputEncoderAgent = ["claude-opus-4-6"]
+FullModeMulti = ["claude-opus-4-6"]
+
+# --- Main agents with model diversity for parallel attempts ---
+CRSPovProducerAgent = ["claude-sonnet-4-6", "claude-opus-4-6"]
+CRSVulnAnalyzerAgent = ["claude-sonnet-4-6", "claude-opus-4-6"]
+FullMode = ["claude-sonnet-4-6", "claude-opus-4-6"]
+
+# --- Standard sonnet agents ---
 CRSDiffAgent = ["claude-sonnet-4-6"]
 CRSDynamicDebugAgent = ["claude-sonnet-4-6"]
-CRSPovProducerAgent = ["claude-sonnet-4-6"]
-HarnessInputEncoderAgent = ["claude-sonnet-4-6"]
+GenerateKaitaiAgent = ["claude-sonnet-4-6"]
+HarnessInputDecoderAgent = ["claude-sonnet-4-6"]
+BranchFlipperAgent = ["claude-sonnet-4-6"]
 PatcherAgent = ["claude-sonnet-4-6"]
-SourceQuestionsAgent = ["claude-sonnet-4-6"]
+AddDebugPrintsAgent = ["claude-sonnet-4-6"]
+
+# --- Lightweight / classifiers (text-fallback mode, no logprobs) ---
 TriageAgent = ["claude-haiku-4-5-20251001"]
 DedupClassifier = ["claude-haiku-4-5-20251001"]
 FunctionSummarizer = ["claude-haiku-4-5-20251001"]
 LikelyVulnClassifier = ["claude-haiku-4-5-20251001"]
-CRSVulnAnalyzerAgent = ["claude-sonnet-4-6"]
-GenerateKaitaiAgent = ["claude-sonnet-4-6"]
-HarnessInputDecoderAgent = ["claude-sonnet-4-6"]
-BranchFlipperAgent = ["claude-sonnet-4-6"]
 LikelyFlippableClassifier = ["claude-haiku-4-5-20251001"]
-FullMode = ["claude-sonnet-4-6"]
-FullModeMulti = ["claude-sonnet-4-6"]
