@@ -102,7 +102,7 @@ fi
 
 # Use oss-crs model map if no MODEL_MAP is set
 if [ -z "$MODEL_MAP" ]; then
-    export MODEL_MAP=/crs/configs/models-anthropic.toml
+    export MODEL_MAP=/crs/configs/models-oss-crs.toml
 fi
 
 ###############################################################################
