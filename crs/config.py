@@ -159,8 +159,8 @@ def parse_model_map(path: Path | str) -> ModelMap:
     return TypeAdapter(ModelMap).validate_python(tomllib.load(open(path, "rb")))
 _default_model_map = parse_model_map(path) if (path := os.environ.get("MODEL_MAP")) else {}
 MODEL_MAP: ContextVar[ModelMap] = ContextVar('MODEL_MAP', default=_default_model_map)
-MODEL: ContextVar[str] = ContextVar('MODEL', default=os.environ.get("MODEL") or "claude-sonnet-4-6")
-SMALLMODEL: ContextVar[str] = ContextVar('SMALLMODEL', default=os.environ.get("SMALLMODEL") or "claude-haiku-4-5-20251001")
+MODEL: ContextVar[str] = ContextVar('MODEL', default=os.environ.get("MODEL") or "claude-sonnet-4-20250514")
+SMALLMODEL: ContextVar[str] = ContextVar('SMALLMODEL', default=os.environ.get("SMALLMODEL") or "o4-mini-2025-04-16")
 
 # Logging configuration
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

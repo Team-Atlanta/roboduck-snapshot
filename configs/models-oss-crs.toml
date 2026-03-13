@@ -1,29 +1,23 @@
-# Model map for oss-crs mode — all models go through the LiteLLM proxy.
-# Three tiers: opus (deep reasoning), sonnet (main workhorse), haiku (classifiers).
-# Mirrors original models-final.toml role assignment with Anthropic-only models.
+# Model map for oss-crs mode — faithful mirror of models-final.toml.
+# All models go through the LiteLLM proxy at OSS_CRS_LLM_API_URL.
+# Provider prefixes (anthropic/, azure/) stripped since proxy handles routing.
+# Provider-level fallbacks collapsed (e.g. azure/o4-mini + o4-mini → single entry).
 
-# --- Deep reasoning (original: o3, opus-4, gemini-2.5-pro) ---
-SourceQuestionsAgent = ["claude-opus-4-6"]
-HarnessInputEncoderAgent = ["claude-opus-4-6"]
-FullModeMulti = ["claude-opus-4-6"]
-
-# --- Main agents with model diversity for parallel attempts ---
-CRSPovProducerAgent = ["claude-sonnet-4-6", "claude-opus-4-6"]
-CRSVulnAnalyzerAgent = ["claude-sonnet-4-6", "claude-opus-4-6"]
-FullMode = ["claude-sonnet-4-6", "claude-opus-4-6"]
-
-# --- Standard sonnet agents ---
-CRSDiffAgent = ["claude-sonnet-4-6"]
-CRSDynamicDebugAgent = ["claude-sonnet-4-6"]
-GenerateKaitaiAgent = ["claude-sonnet-4-6"]
-HarnessInputDecoderAgent = ["claude-sonnet-4-6"]
-BranchFlipperAgent = ["claude-sonnet-4-6"]
-PatcherAgent = ["claude-sonnet-4-6"]
-AddDebugPrintsAgent = ["claude-sonnet-4-6"]
-
-# --- Lightweight / classifiers (text-fallback mode, no logprobs) ---
-TriageAgent = ["claude-haiku-4-5-20251001"]
-DedupClassifier = ["claude-haiku-4-5-20251001"]
-FunctionSummarizer = ["claude-haiku-4-5-20251001"]
-LikelyVulnClassifier = ["claude-haiku-4-5-20251001"]
-LikelyFlippableClassifier = ["claude-haiku-4-5-20251001"]
+AddDebugPrintsAgent = ["claude-3-5-sonnet-20241022"]
+CRSDiffAgent = ["o4-mini-2025-04-16"]
+CRSDynamicDebugAgent = ["claude-3-5-sonnet-20241022"]
+CRSPovProducerAgent = ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "o3-2025-04-16"]
+HarnessInputEncoderAgent = ["o3-2025-04-16"]
+PatcherAgent = ["claude-sonnet-4-20250514", "gpt-4.1-2025-04-14"]
+SourceQuestionsAgent = ["o3-2025-04-16"]
+TriageAgent = ["o4-mini-2025-04-16"]
+DedupClassifier = ["gpt-4.1-2025-04-14"]
+FunctionSummarizer = ["claude-sonnet-4-20250514"]
+LikelyVulnClassifier = ["gpt-4.1-2025-04-14"]
+CRSVulnAnalyzerAgent = ["o4-mini-2025-04-16", "o4-mini-2025-04-16", "o4-mini-2025-04-16", "o4-mini-2025-04-16"]
+GenerateKaitaiAgent = ["claude-sonnet-4-20250514"]
+HarnessInputDecoderAgent = ["claude-sonnet-4-20250514"]
+BranchFlipperAgent = ["claude-sonnet-4-20250514"]
+LikelyFlippableClassifier = ["gpt-4.1-2025-04-14"]
+FullModeMulti = ["claude-opus-4-20250514", "gemini-2.5-pro"]
+FullMode = ["gpt-4o-2024-08-06", "o3-2025-04-16"]

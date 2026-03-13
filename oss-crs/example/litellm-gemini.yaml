@@ -1,18 +1,49 @@
 model_list:
-  # Route claude-opus-4-6 requests to Gemini 2.5 Pro (deep reasoning tier)
-  - model_name: claude-opus-4-6
+  # Route all models through Gemini for cost-effective testing.
+  # Model name → Gemini equivalent mapping:
+  #   claude-opus-4 / o3 / gemini-2.5-pro  → gemini-2.5-pro  (deep reasoning)
+  #   claude-sonnet-4 / claude-3-5-sonnet   → gemini-2.5-pro  (standard)
+  #   o4-mini / gpt-4.1 / gpt-4o           → gemini-2.5-flash (fast/light)
+
+  # --- Deep reasoning tier → Gemini 2.5 Pro ---
+  - model_name: claude-opus-4-20250514
     litellm_params:
       model: gemini/gemini-2.5-pro
       api_key: os.environ/GEMINI_API_KEY
 
-  # Route claude-sonnet-4-6 requests to Gemini 2.5 Pro
-  - model_name: claude-sonnet-4-6
+  - model_name: o3-2025-04-16
     litellm_params:
       model: gemini/gemini-2.5-pro
       api_key: os.environ/GEMINI_API_KEY
 
-  # Route claude-haiku requests to Gemini 2.5 Flash
-  - model_name: claude-haiku-4-5-20251001
+  - model_name: gemini-2.5-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+
+  # --- Standard tier → Gemini 2.5 Pro ---
+  - model_name: claude-sonnet-4-20250514
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+
+  - model_name: claude-3-5-sonnet-20241022
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+
+  # --- Fast/light tier → Gemini 2.5 Flash ---
+  - model_name: o4-mini-2025-04-16
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  - model_name: gpt-4.1-2025-04-14
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  - model_name: gpt-4o-2024-08-06
     litellm_params:
       model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY

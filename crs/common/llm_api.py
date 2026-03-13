@@ -91,6 +91,8 @@ DUPE_MODEL_MAP = {
     "gpt-4o-2024-08-06": "gpt-4o",
     "gpt-4o-2024-11-20": "gpt-4o",
     "gpt-4o-mini-2024-07-18": "gpt-4o-mini",
+
+    "gemini-2.5-pro": "gemini/gemini-2.5-pro",
 }
 
 CLAUDE_THINKING_SUPPORTED_MODELS = ["claude-4-sonnet", "claude-3-7-sonnet"]
