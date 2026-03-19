@@ -123,6 +123,15 @@ class CorpusManager:
         await self.seed_path.mkdir(exist_ok=True)
         await self.crash_path.mkdir(exist_ok=True)
         await self.untested_crash_path.mkdir(exist_ok=True)
+
+        # In oss-crs mode, register seed_path for exchange with other CRSes
+        if ROBODUCK_MODE:
+            import subprocess
+            seed_path_str = str(self.seed_path)
+            logger.info(f"[oss-crs] Registering seed exchange for {seed_path_str}")
+            subprocess.Popen(["libCRS", "register-submit-dir", "seed", seed_path_str])
+            subprocess.Popen(["libCRS", "register-fetch-dir", "seed", seed_path_str])
+
         # re-load crashes and seeds in case we had some already in the folder
         async with self.crash_path.iterdir() as bucket_it:
             async for bucket in bucket_it:

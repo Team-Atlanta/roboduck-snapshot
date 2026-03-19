@@ -74,13 +74,12 @@ docker pull "$CRS_RUNNER_IMAGE" || \
     echo "[roboduck] Warning: could not pull runner image, will try to continue"
 
 ###############################################################################
-# 4. Register submission directories with libCRS
+# 4. Register POV submission directory with libCRS
+#    (seed submit/fetch is registered in CorpusManager.init() at runtime)
 ###############################################################################
-mkdir -p /artifacts/povs /artifacts/seeds
+mkdir -p /artifacts/povs
 libCRS register-submit-dir pov /artifacts/povs &
 SUBMIT_POV_PID=$!
-libCRS register-submit-dir seed /artifacts/seeds &
-SUBMIT_SEED_PID=$!
 
 ###############################################################################
 # 5. Configure environment
@@ -124,4 +123,4 @@ TASK_SERVER_PID=$!
 python3 main.py
 
 # Cleanup
-kill $SUBMIT_POV_PID $SUBMIT_SEED_PID $TASK_SERVER_PID 2>/dev/null || true
+kill $SUBMIT_POV_PID $TASK_SERVER_PID 2>/dev/null || true
