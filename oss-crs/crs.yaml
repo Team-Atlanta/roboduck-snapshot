@@ -13,8 +13,9 @@ target_build_phase:
     outputs:
       - build
       - src
-      - coverage-build
-      - debug-build
+      # coverage-build and debug-build are produced by compile_target but
+      # not declared here — they are optional (may fail for CMake projects).
+      # run_roboduck.sh downloads them with fallback.
 
 crs_run_phase:
   fuzzer:
