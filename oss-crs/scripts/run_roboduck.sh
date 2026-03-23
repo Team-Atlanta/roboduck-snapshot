@@ -65,6 +65,17 @@ echo "[roboduck] Docker daemon ready."
 
 export DOCKER_HOST=unix:///var/run/docker.sock
 
+# Load pre-cached Docker images into DinD (saved during prepare phase).
+# Runs in background while build outputs download in parallel.
+LOAD_PIDS=""
+if [ -d /crs/docker-images ]; then
+    echo "[roboduck] Loading pre-cached Docker images..."
+    for img in /crs/docker-images/*.tar; do
+        docker load < "$img" &
+        LOAD_PIDS="$LOAD_PIDS $!"
+    done
+fi
+
 ###############################################################################
 # 2. Download build outputs from the build phase
 ###############################################################################
@@ -87,9 +98,15 @@ libCRS download-build-output debug-build /out-debug 2>/dev/null \
 ###############################################################################
 # Use oss-fuzz base-runner instead of AIxCC-specific image
 export CRS_RUNNER_IMAGE="${CRS_RUNNER_IMAGE:-gcr.io/oss-fuzz-base/base-runner}"
-echo "[roboduck] Pulling runner image: $CRS_RUNNER_IMAGE ..."
-docker pull "$CRS_RUNNER_IMAGE" || \
-    echo "[roboduck] Warning: could not pull runner image, will try to continue"
+# Wait for background image loads to finish before checking
+[ -n "$LOAD_PIDS" ] && wait $LOAD_PIDS 2>/dev/null
+if docker image inspect "$CRS_RUNNER_IMAGE" >/dev/null 2>&1; then
+    echo "[roboduck] Runner image $CRS_RUNNER_IMAGE already loaded from cache."
+else
+    echo "[roboduck] Pulling runner image: $CRS_RUNNER_IMAGE ..."
+    docker pull "$CRS_RUNNER_IMAGE" || \
+        echo "[roboduck] Warning: could not pull runner image, will try to continue"
+fi
 
 # Tag the runner image as the project build image so roboduck's Docker
 # calls (gtags, ainalysis, infer) can find it by the expected name.

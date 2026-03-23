@@ -2,6 +2,22 @@
 # llvm-cov built from source. Infer downloaded as pre-built binary.
 
 ###############################################################################
+# Stage 0: Pre-cache Docker images for DinD using crane
+#   Saves ~2-3 min per run by avoiding runtime image pulls.
+###############################################################################
+FROM alpine:latest AS image-cache
+
+# Install crane for pulling container images without a Docker daemon
+RUN apk add --no-cache curl && \
+    curl -fsSL https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz \
+    | tar -xzf - -C /usr/local/bin crane
+
+# Pull each image separately — if one fails, others still get cached.
+RUN crane pull gcr.io/oss-fuzz-base/base-runner /base-runner.tar || true
+RUN crane pull tjbecker/python_sandbox:0.3.1    /python-sandbox.tar || true
+RUN crane pull konenattheori/joern:latest       /joern.tar || true
+
+###############################################################################
 # Stage 1: Build llvm-cov from source
 ###############################################################################
 FROM gcr.io/oss-fuzz-base/base-builder:latest AS llvm-cov-build
@@ -110,3 +126,7 @@ COPY ./prompts ./prompts
 COPY ./main.py ./main.py
 COPY ./run-crs.sh ./run-crs.sh
 COPY ./oss-crs/scripts /opt/roboduck-oss-crs/
+
+# Pre-cached Docker images for DinD (loaded at startup by run_roboduck.sh)
+RUN mkdir -p /crs/docker-images
+COPY --from=image-cache /base-runner.tar* /python-sandbox.tar* /joern.tar* /crs/docker-images/
