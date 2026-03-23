@@ -3,6 +3,10 @@
 ARG target_base_image
 FROM ${target_base_image}
 
+# bear: intercepts compilation to produce compile_commands.json (needed by infer)
+RUN apt-get update && apt-get install -y --no-install-recommends bear \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=libcrs . /libCRS
 RUN /libCRS/install.sh
 

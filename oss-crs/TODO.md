@@ -1,22 +1,34 @@
 # oss-crs Port — Known Gaps & TODOs
 
-## Skipped: Infer Static Analysis
+## Fixed: Infer Static Analysis
 
-**Status**: Temporarily skipped
-**Location**: `oss-crs/dockerfiles/base.Dockerfile` (Stage 1 removed)
-**Root cause**: Pinned infer commit (`1b1366e6`) depends on opam packages that no longer resolve against current opam repositories. Original roboduck pulled pre-built infer from Azure Blob Storage.
+**Status**: Working — infer v1.1.0 runs inside DinD, compatible with base-runner (glibc 2.31)
+**Changes**:
+- `base.Dockerfile`: Downloads infer v1.1.0 from GitHub releases (AFTER `COPY ./external`); v1.1.0 chosen for glibc 2.31 compatibility (v1.2.0 needs 2.34+)
+- `builder.Dockerfile`: Installs `bear` package for compile_commands.json generation
+- `compile_target`: Wraps primary build with `bear -o "$SRC/compile_commands.json" compile` (bear 2.x syntax, no `--`)
+- `run_roboduck.sh`: Tags `base-runner` as `$PROJECT:oss-crs` so roboduck's Docker calls find it
+- `oss_crs_task.py`: Pre-creates bear tar from `/src`, build tars at correct `get_build_tar()` paths
+- `static_analysis.py`: Removed `--no-bo-assume-void` flag (custom patch only, not in stock infer)
+**Note**: Stock v1.1.0 lacks the original patches (p0-p2, macro.patch) for buffer overrun accuracy. Infer may return non-zero on initial run (normal) but retries with `--keep-going`.
 
-**Impact**:
-- `LAUNCH_INFER` pipeline stage fails gracefully (no `infer` binary at `external/infer/infer/bin/infer`)
-- No static analysis VulnReports from infer
-- Bug-finding still works: fuzzing (`LAUNCH_FUZZERS`), LLM analysis (`LAUNCH_AINALYSIS`), diff analysis (`ANALYZE_DIFF`) are unaffected
-- Affects code path: `crs/modules/infer.py`
+## Fixed: Coverage/Debug Builds
 
-**Fix options**:
-1. Pin opam to an older repository snapshot (opam repo archive)
-2. Update infer to a newer commit with compatible dependencies
-3. Host pre-built infer binary somewhere accessible (GCS bucket, GitHub release)
-4. Use the existing `external/infer/Dockerfile` to pre-build an infer image, then `COPY --from` that image
+**Status**: Working — build phase produces coverage and debug variants, caches pre-populated
+**Changes**:
+- `compile_target`: Runs 3 builds (primary, coverage, debug) and submits each as a named output
+- `crs.yaml`: Declares `coverage-build` and `debug-build` outputs
+- `run_roboduck.sh`: Downloads optional coverage/debug builds to `/out-coverage` and `/out-debug`
+- `oss_crs_task.py`: Pre-populates `coverage_build_config` and `debug_build_config` caches with correct `get_build_tar()` paths
+**Note**: Coverage and debug builds are best-effort — if `compile` fails for those configs, the system degrades gracefully.
+
+## Fixed: DinD Storage Driver Performance
+
+**Status**: fuse-overlayfs used instead of VFS — 2x+ more LLM analysis throughput
+**Changes**:
+- `base.Dockerfile`: Installs `fuse-overlayfs` package
+- `run_roboduck.sh`: Tries overlay2 → fuse-overlayfs → vfs (fallback chain)
+**Impact**: Container startup ~200x faster, LLM calls per run doubled (63 → 140 in 10min test).
 
 ## Skipped: Azure Blob Corpus Matching
 
@@ -31,51 +43,39 @@
 **What works**: `inject_task.py` auto-detects delta mode from `$OSS_CRS_FETCH_DIR/diffs/ref.diff` (framework-standard). DeltaTask is created with the diff text. Fuzzing finds crashes, triage processes them, LLM agents analyze vulnerabilities. Base project build failure handled gracefully in `helpers.py`.
 **Limitation**: Base project has no build artifacts, so `DeltaTask.test_pov_contents()` cannot verify regressions — all POVs are accepted. Proper base comparison requires builder sidecar integration (for pre-diff compilation).
 
-## Not Yet Implemented: Coverage/Debug Builds
-
-**Status**: Blocked gracefully
-**Location**: `crs/modules/project.py` — `_build()` returns `Err(BuildError(...))` when `ROBODUCK_MODE` is set and config is not pre-cached
-**Impact**: Coverage-guided analysis and debug builds won't work. Only the primary build config (from the build phase) is available.
-
 ## Performance: Docker Image Pulls Inside DinD
 
-**Status**: Working but slow
-**Location**: `oss-crs/scripts/run_roboduck.sh`, `crs/common/docker.py`
-**Impact**: Roboduck pulls several Docker images inside DinD at runtime (base-runner, python_sandbox, joern). With the `vfs` storage driver (DinD fallback), these pulls are slow (~2min each). A 5-minute timeout is insufficient for the full triage pipeline to complete.
+**Status**: Mitigated by fuse-overlayfs, but first-run pulls still slow
+**Impact**: Roboduck pulls several Docker images inside DinD at runtime (base-runner, python_sandbox, joern). First pull is slow (~1-2min each). Subsequent runs benefit from Docker layer cache if data dir persists.
 
-**Mitigation options**:
+**Further mitigation options**:
 1. Pre-load images into the DinD daemon during the prepare phase (e.g., `docker save | docker load`)
 2. Include frequently-used images in the base image and `docker load` them at startup
-3. Use longer timeouts (10+ minutes)
-4. Skip joern analysis in oss-crs mode if not needed
 
 ## E2E Validation Status
 
-**Status**: Full mode + Delta mode validated
-**Date**: 2026-03-06
-**Target**: `sanity-mock-c-delta-01` / `fuzz_process_input_header`
+**Status**: Full mode validated with mongoose target
+**Date**: 2026-03-19
+**Target**: `mongoose` / `fuzz`
 
 **What works**:
-- DinD with vfs fallback
-- Task injection via `inject_task.py` (auto-detects delta mode)
-- Harness source discovery (`fuzz/fuzz_process_input_header.c`)
-- Fuzzer launch and crash discovery (51+ crashes in ~20s)
-- Triage pipeline processes POVs (dedup + vuln analysis)
-- LiteLLM proxy integration with Claude models
-- LLM-based triage agents (`TriageAgent`, `CRSVulnAnalyzerAgent`) make tool calls
-- DeltaTask created from `$OSS_CRS_FETCH_DIR/diffs/ref.diff`
-- Base project build failure handled gracefully (skips base comparison)
-- Classifier works with Claude via text-based fallback (no logprobs)
+- DinD with fuse-overlayfs (overlay2 → fuse-overlayfs fallback)
+- Task injection via `inject_task.py`
+- Infer static analysis (v1.1.0, bear + compile_commands.json)
+- Coverage and debug build pre-population
+- Fuzzer launch and seed production (140+ seeds in 10min)
+- LiteLLM proxy integration (internal and external modes)
+- LLM-based agents make tool calls (140 LLM calls in 10min)
+- Seed submission via libCRS
+- Joern CPG analysis uses bear tar
 
 **What fails gracefully**:
-- `LAUNCH_INFER` — no infer binary (documented above)
-- Coverage/debug builds — only pre-built artifacts available
-- Bear build — not available in oss-crs mode
+- Ainalysis (LLM code analysis) — gtags `cannot stat` on mongoose source files (pre-existing VFS path mapping issue, not caused by oss-crs port)
 - Base project builds in DeltaTask — logs warning, skips comparison
 
 **Not yet validated**:
-- POV submission end-to-end (triage runs but no POVs submitted yet — likely needs longer timeout or classifier tuning)
-- Seed submission
+- POV submission end-to-end (needs a target with actual vulnerabilities)
+- Delta mode with new build infrastructure
 
 ## Not Yet Tested: Unit Tests
 

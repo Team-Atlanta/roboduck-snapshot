@@ -20,7 +20,9 @@ async def load_vfs(vfs: VFS, src_path: Path, language: str | None = None) -> Res
     project = AnalysisProject()
     src_path_str = src_path.as_posix()
     for path in require(await vfs.tree()).all_paths():
-        if not path.startswith(src_path_str):
+        # Normalize ./prefix that TarFS produces from arcname="."
+        norm_path = path.removeprefix("./")
+        if not norm_path.startswith(src_path_str):
             continue
         if not path.endswith(language_exts):
             continue

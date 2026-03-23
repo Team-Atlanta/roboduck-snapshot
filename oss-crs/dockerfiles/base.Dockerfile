@@ -1,25 +1,5 @@
 # Roboduck base image — prepare phase.
-# No Azure dependencies. llvm-cov built from source. Infer skipped (see below).
-
-###############################################################################
-# Stage 1: Build infer from source — SKIPPED
-#
-# WHY: The pinned infer commit (1b1366e6) uses opam dependency resolution that
-#      fails with current opam repositories. The original roboduck pulled
-#      pre-built infer from Azure Blob Storage, which we stripped.
-#
-# IMPACT:
-#   - LAUNCH_INFER pipeline stage will fail gracefully (no infer binary found)
-#   - Static analysis reports from infer won't be generated
-#   - Bug-finding still works: fuzzing, LLM analysis (ainalysis), and
-#     diff analysis pipelines are unaffected
-#   - Affects: crs/modules/infer.py — checks for external/infer/infer/bin/infer
-#
-# TO FIX: Either:
-#   a) Pin opam to an older snapshot (opam repository archive), or
-#   b) Update infer to a newer commit with compatible deps, or
-#   c) Host pre-built infer binary somewhere accessible (GCS, GitHub release)
-###############################################################################
+# llvm-cov built from source. Infer downloaded as pre-built binary.
 
 ###############################################################################
 # Stage 1: Build llvm-cov from source
@@ -67,7 +47,7 @@ RUN apt-get update \
        pkg-config protobuf-compiler flex bison libnl-route-3-dev \
        software-properties-common openjdk-17-jdk \
        universal-ctags global patchutils rustup musl-tools clang sudo ripgrep wget \
-       libssl-dev \
+       libssl-dev fuse-overlayfs \
     && rustup default stable \
     && add-apt-repository -y ppa:deadsnakes/ppa \
     && apt-get update --allow-insecure-repositories \
@@ -77,12 +57,8 @@ RUN apt-get update \
     && apt-get autoclean -y \
     && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /crs /crs/external/infer /crs/external/llvm-cov
+RUN mkdir -p /crs /crs/external/llvm-cov
 WORKDIR /crs
-
-# Infer: NOT included (see Stage 1 comment above)
-# Create empty placeholder so code that checks the path doesn't crash
-RUN mkdir -p external/infer/infer/bin external/infer/infer/lib
 
 # Copy llvm-cov from build stage
 COPY --from=llvm-cov-build /root/build/llvm-project/build/bin/llvm-cov external/llvm-cov/llvm-cov
@@ -99,6 +75,25 @@ COPY ./utils ./utils
 COPY ./external ./external
 COPY build.sh ./
 RUN ./build.sh
+
+# Infer: download pre-built v1.2.0 from GitHub releases AFTER COPY ./external
+# (COPY overwrites external/infer/ — must download after).
+# The archive layout under lib/infer/ matches what roboduck expects:
+#   external/infer/infer/bin/infer  +  external/infer/facebook-clang-plugins/
+# Falls back to empty placeholder if download fails — LAUNCH_INFER will
+# degrade gracefully (no static analysis reports, fuzzing unaffected).
+# v1.1.0 is the newest release compatible with glibc 2.31 (base-runner is
+# Ubuntu 20.04). v1.2.0 requires glibc 2.34+.
+ARG INFER_VERSION=v1.1.0
+RUN curl -fsSL -o /tmp/infer.tar.xz \
+        "https://github.com/facebook/infer/releases/download/${INFER_VERSION}/infer-linux64-${INFER_VERSION}.tar.xz" \
+    && tar -Jxf /tmp/infer.tar.xz --strip-components=3 \
+        -C external/infer/ "infer-linux64-${INFER_VERSION}/lib/infer/" \
+    && rm /tmp/infer.tar.xz \
+    && chmod +x external/infer/infer/bin/infer \
+    && echo "[base] Infer ${INFER_VERSION} installed successfully." \
+    || { echo "[base] WARNING: Could not download infer. Static analysis will be unavailable."; \
+         mkdir -p external/infer/infer/bin external/infer/infer/lib; }
 
 RUN git config --system --add safe.directory '*'
 

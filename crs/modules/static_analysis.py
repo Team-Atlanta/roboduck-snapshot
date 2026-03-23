@@ -80,7 +80,6 @@ class StaticAnalyzer:
                             "--bufferoverrun",
                             "--bo-field-depth-limit", str(INFER_DEFAULT_FIELD_DEPTH),
                             "--no-filtering",
-                            "--no-bo-assume-void",
                             "--compilation-database", "/src/compile_commands.json",
                             "-o", "/tmp/infer-out",
                             stdout=PIPE, stderr=STDOUT,

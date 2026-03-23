@@ -9,7 +9,11 @@ cd /crs
 #    debugger, coverage, and PoV testing
 ###############################################################################
 echo "[roboduck] Starting Docker daemon..."
-# Try overlay2 first; if it fails (common in DinD), retry with vfs
+
+# DinD storage driver priority:
+#   1. overlay2 — fastest, but fails on nested overlayfs
+#   2. fuse-overlayfs — works on any filesystem, no extra RAM
+#   3. vfs — last resort, very slow (full copy per layer)
 _start_dockerd() {
     dockerd --host=unix:///var/run/docker.sock \
             --host=tcp://0.0.0.0:2375 \
@@ -28,10 +32,15 @@ for i in $(seq 1 10); do
         DOCKER_READY=1
         break
     fi
-    # If dockerd exited, overlay2 failed
+    # If dockerd exited, try next storage driver
     if ! kill -0 $DOCKERD_PID 2>/dev/null; then
-        echo "[roboduck] overlay2 failed, retrying with vfs..."
-        _start_dockerd vfs
+        if command -v fuse-overlayfs >/dev/null 2>&1; then
+            echo "[roboduck] overlay2 failed, trying fuse-overlayfs..."
+            _start_dockerd fuse-overlayfs
+        else
+            echo "[roboduck] overlay2 failed, falling back to vfs..."
+            _start_dockerd vfs
+        fi
     fi
     sleep 1
 done
@@ -64,6 +73,15 @@ mkdir -p /out /src
 libCRS download-build-output build /out
 libCRS download-build-output src /src
 
+# Optional: coverage and debug builds (may not exist if compile failed)
+mkdir -p /out-coverage /out-debug
+libCRS download-build-output coverage-build /out-coverage 2>/dev/null \
+    && echo "[roboduck] Coverage build downloaded." \
+    || echo "[roboduck] No coverage build available (optional)."
+libCRS download-build-output debug-build /out-debug 2>/dev/null \
+    && echo "[roboduck] Debug build downloaded." \
+    || echo "[roboduck] No debug build available (optional)."
+
 ###############################################################################
 # 3. Pull the base-runner image for running fuzzers/PoVs
 ###############################################################################
@@ -72,6 +90,14 @@ export CRS_RUNNER_IMAGE="${CRS_RUNNER_IMAGE:-gcr.io/oss-fuzz-base/base-runner}"
 echo "[roboduck] Pulling runner image: $CRS_RUNNER_IMAGE ..."
 docker pull "$CRS_RUNNER_IMAGE" || \
     echo "[roboduck] Warning: could not pull runner image, will try to continue"
+
+# Tag the runner image as the project build image so roboduck's Docker
+# calls (gtags, ainalysis, infer) can find it by the expected name.
+_PROJECT="${OSS_CRS_TARGET:-unknown}"
+_BUILD_TAG="${_PROJECT}:oss-crs"
+docker tag "$CRS_RUNNER_IMAGE" "$_BUILD_TAG" 2>/dev/null \
+    && echo "[roboduck] Tagged ${CRS_RUNNER_IMAGE} as ${_BUILD_TAG}" \
+    || echo "[roboduck] Warning: could not tag build image"
 
 ###############################################################################
 # 4. Register POV submission directory with libCRS

@@ -13,6 +13,8 @@ target_build_phase:
     outputs:
       - build
       - src
+      - coverage-build
+      - debug-build
 
 crs_run_phase:
   fuzzer:

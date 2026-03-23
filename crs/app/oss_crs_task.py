@@ -29,6 +29,57 @@ from crs import config
 from crs_rust import logger
 
 
+async def _populate_optional_build(
+    proj: Project,
+    state: str,
+    build_config: "BuildConfig",
+    out_dir: str,
+    label: str,
+) -> None:
+    """Pre-populate an optional build config (coverage/debug) from a local directory."""
+    if not os.path.isdir(out_dir) or not os.listdir(out_dir):
+        logger.info(f"No {label} build available at {out_dir}, skipping.")
+        return
+
+    # Use proj.get_build_tar() to get the path that get_build_vfs() expects
+    tar_path = await proj.get_build_tar(build_config)
+    if not os.path.exists(tar_path):
+        logger.info(f"Creating {label} build tar from {out_dir} -> {tar_path}")
+        def _tar():
+            with tarfile.open(tar_path, "w") as tf:
+                tf.add(out_dir, arcname=".")
+        await asyncio.to_thread(_tar)
+
+    vfs = await TarFS.fsopen(tar_path)
+    artifacts = BuildArtifacts(proj.name, build_config, vfs)
+    proj.builds[state][build_config] = artifacts
+    logger.info(f"Pre-populated {label} build cache for config {build_config}")
+
+
+def _find_project_workdir(project_name: str, src_dir: str = "/src") -> str:
+    """
+    Find the actual project root directory inside /src.
+
+    oss-fuzz clones the main repo into /src/<repo-name>/. The build.sh
+    typically does `cd $SRC/<name>`. We detect it by:
+    1. Looking for /src/<project_name>/ (exact match)
+    2. Looking for git repos one level deep in /src
+    3. Falling back to /src
+    """
+    # Direct match by project name
+    candidate = os.path.join(src_dir, project_name)
+    if os.path.isdir(candidate):
+        return candidate
+
+    # Look for git repos one level deep
+    for entry in sorted(os.listdir(src_dir)):
+        entry_path = os.path.join(src_dir, entry)
+        if os.path.isdir(entry_path) and os.path.isdir(os.path.join(entry_path, ".git")):
+            return entry_path
+
+    return src_dir
+
+
 def _find_harness_source(harness_name: str, src_dir: str = "/src") -> str:
     """
     Try to find the source file for a harness binary in the source tree.
@@ -90,19 +141,43 @@ async def _create_project_from_local(task_detail: TaskDetail) -> Project:
     if not os.path.exists(src_tar_path):
         logger.info(f"Creating source tar from /src -> {src_tar_path}")
         def _tar_src():
-            with tarfile.open(src_tar_path, "w") as tf:
+            with tarfile.open(src_tar_path, "w", dereference=True) as tf:
                 tf.add("/src", arcname=".")
         await asyncio.to_thread(_tar_src)
     src_vfs = EditableOverlayFS(await TarFS.fsopen(src_tar_path))
 
-    # Create build artifacts VFS from /out
+    # Create build config
     build_config = BuildConfig(
         FUZZING_LANGUAGE=language,
         SANITIZER=sanitizer,
         ARCHITECTURE=architecture,
         FUZZING_ENGINE=engine,
     )
-    build_tar_path = data_dir / f"build_{build_config}.tar"
+
+    # Discover the actual project working directory inside /src.
+    # oss-fuzz clones the main repo into /src/<repo-name>/, so the workdir
+    # is typically /src/<repo-name> (matching build.sh's "cd $SRC/<name>").
+    workdir = _find_project_workdir(project_name)
+    logger.info(f"Detected project workdir: {workdir}")
+
+    # Create Project first — we need it to compute correct tar paths
+    proj = Project(
+        project_dir=project_dir,
+        data_dir=data_dir,
+        vfs=src_vfs,
+        info=info,
+        ossfuzz_hash="oss-crs",
+        workdir=workdir,
+    )
+
+    # build_image defaults to "project:oss-crs" which is created in
+    # run_roboduck.sh by importing the current container's filesystem into DinD.
+    # This gives all Docker operations (ainalysis, gtags, infer) access to
+    # Ubuntu 24.04 tools and glibc 2.39.
+
+    # Create build tar from /out at the path get_build_tar() expects
+    # (includes project name + edit_state hash in filename)
+    build_tar_path = await proj.get_build_tar(build_config)
     if not os.path.exists(build_tar_path):
         logger.info(f"Creating build tar from /out -> {build_tar_path}")
         def _tar_out():
@@ -112,19 +187,36 @@ async def _create_project_from_local(task_detail: TaskDetail) -> Project:
     build_vfs = await TarFS.fsopen(build_tar_path)
     build_artifacts = BuildArtifacts(project_name, build_config, build_vfs)
 
-    # Create Project
-    proj = Project(
-        project_dir=project_dir,
-        data_dir=data_dir,
-        vfs=src_vfs,
-        info=info,
-        ossfuzz_hash="oss-crs",
-        workdir="/src",
-    )
-
     # Pre-populate builds so build_all() returns immediately
     state = await proj.edit_state()
     proj.builds[state][build_config] = build_artifacts
+
+    # Pre-populate coverage build if available (from build phase)
+    await _populate_optional_build(
+        proj, state, info.coverage_build_config,
+        "/out-coverage", "coverage",
+    )
+
+    # Pre-populate debug build if available (from build phase)
+    await _populate_optional_build(
+        proj, state, info.debug_build_config,
+        "/out-debug", "debug",
+    )
+
+    # Pre-populate bear tar if compile_commands.json exists in /src
+    # (generated by bear during the build phase). This enables infer
+    # static analysis without needing to rebuild with bear at runtime.
+    if os.path.exists("/src/compile_commands.json"):
+        bear_tar_path = await proj.get_bear_tar()
+        if not os.path.exists(bear_tar_path):
+            logger.info(f"Creating bear tar from /src (has compile_commands.json) -> {bear_tar_path}")
+            def _tar_bear():
+                with tarfile.open(bear_tar_path, "w") as tf:
+                    tf.add("/src", arcname=".")
+            await asyncio.to_thread(_tar_bear)
+            logger.info("Pre-populated bear tar for infer static analysis")
+    else:
+        logger.info("No compile_commands.json in /src — infer static analysis unavailable")
 
     # Pre-populate harness info if we know the harness name
     if harness_name:

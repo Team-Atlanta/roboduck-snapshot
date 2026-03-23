@@ -1,23 +1,65 @@
 #!/bin/bash
 # Build-phase entry point: compile the target and submit build + src outputs.
+# Produces three builds: primary (asan), coverage, and debug.
 set -e
 
-# Run the standard oss-fuzz compile
-compile
+# Save original environment
+ORIG_OUT="$OUT"
+ORIG_SANITIZER="${SANITIZER:-address}"
+ORIG_CFLAGS="${CFLAGS:-}"
+ORIG_CXXFLAGS="${CXXFLAGS:-}"
+ORIG_FUZZING_ENGINE="${FUZZING_ENGINE:-libfuzzer}"
 
-# Submit build artifacts (harness binaries, etc.)
+###############################################################################
+# 1. Primary build (default sanitizer) — wrapped with bear to capture
+#    compile_commands.json for infer static analysis
+###############################################################################
+if command -v bear >/dev/null 2>&1; then
+    echo "[compile_target] Running primary build with bear..."
+    # bear 2.x syntax: no '--' separator
+    bear -o "$SRC/compile_commands.json" compile || compile
+else
+    compile
+fi
 libCRS submit-build-output "$OUT" build
 
-# Submit source tree for later analysis
-# Find the git repo root under $SRC, or use $SRC directly
-if [ -d "$SRC/.git" ]; then
-    libCRS submit-build-output "$SRC" src
+# Submit source tree (now includes compile_commands.json from bear)
+libCRS submit-build-output "$SRC" src
+
+###############################################################################
+# 2. Coverage build — compile with coverage instrumentation
+#    Enables llvm-cov based code coverage analysis in the CRS.
+###############################################################################
+echo "[compile_target] Building coverage variant..."
+export OUT=/out-coverage
+mkdir -p "$OUT"
+export SANITIZER=coverage
+export CFLAGS="$ORIG_CFLAGS -fno-inline"
+export CXXFLAGS="$ORIG_CXXFLAGS -fno-inline"
+export FUZZING_ENGINE="$ORIG_FUZZING_ENGINE"
+
+if compile 2>&1; then
+    libCRS submit-build-output "$OUT" coverage-build
+    echo "[compile_target] Coverage build submitted."
 else
-    # Look for a git repo one level deep
-    REPO_DIR=$(find "$SRC" -maxdepth 2 -name ".git" -type d -print -quit 2>/dev/null | xargs dirname 2>/dev/null || true)
-    if [ -n "$REPO_DIR" ]; then
-        libCRS submit-build-output "$SRC" src
-    else
-        libCRS submit-build-output "$SRC" src
-    fi
+    echo "[compile_target] WARNING: Coverage build failed, skipping."
+fi
+
+###############################################################################
+# 3. Debug build — compile with debug symbols, no fuzzing engine
+#    Enables GDB-based debugging and analysis in the CRS.
+###############################################################################
+echo "[compile_target] Building debug variant..."
+export OUT=/out-debug
+mkdir -p "$OUT"
+export SANITIZER="$ORIG_SANITIZER"
+export CFLAGS="$ORIG_CFLAGS -ggdb -fno-inline"
+export CXXFLAGS="$ORIG_CXXFLAGS -ggdb -fno-inline"
+export FUZZING_ENGINE=none
+
+if compile 2>&1; then
+    libCRS submit-build-output "$OUT" debug-build
+    echo "[compile_target] Debug build submitted."
+else
+    echo "[compile_target] WARNING: Debug build failed, skipping."
 fi
