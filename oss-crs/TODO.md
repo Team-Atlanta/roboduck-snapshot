@@ -55,25 +55,28 @@
 ## E2E Validation Status
 
 **Status**: Full mode validated with mongoose target
-**Date**: 2026-03-19
+**Date**: 2026-03-23
 **Target**: `mongoose` / `fuzz`
 
 **What works**:
 - DinD with fuse-overlayfs (overlay2 → fuse-overlayfs fallback)
+- Pre-cached Docker images via crane (31s load vs 2-3min pull)
 - Task injection via `inject_task.py`
 - Infer static analysis (v1.1.0, bear + compile_commands.json)
 - Coverage and debug build pre-population
-- Fuzzer launch and seed production (140+ seeds in 10min)
+- Fuzzer launch and seed production (143 seeds in 10min)
 - LiteLLM proxy integration (internal and external modes)
-- LLM-based agents make tool calls (140 LLM calls in 10min)
+- LLM-based agents make tool calls (216 LLM calls in 10min)
 - Seed submission via libCRS
 - Joern CPG analysis uses bear tar
+- Workdir auto-detection from /src/<project>
 
 **What fails gracefully**:
-- Ainalysis (LLM code analysis) — gtags `cannot stat` on mongoose source files (pre-existing VFS path mapping issue, not caused by oss-crs port)
+- Ainalysis on mongoose — single-file library (mongoose.c ~26k lines) exceeds `maxsize` in `full.py:339`, all chunks skipped. This is a pre-existing roboduck limitation for oversized single-file projects, not an oss-crs issue. Multi-file projects should work.
 - Base project builds in DeltaTask — logs warning, skips comparison
 
 **Not yet validated**:
+- Ainalysis on a normal multi-file target (to confirm the pipeline works end-to-end)
 - POV submission end-to-end (needs a target with actual vulnerabilities)
 - Delta mode with new build infrastructure
 
