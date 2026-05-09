@@ -127,7 +127,7 @@ env_tokens = [
 # oss-crs mode: use LiteLLM proxy instead of direct API keys
 ROBODUCK_MODE = os.environ.get("ROBODUCK_MODE")
 OSS_CRS_LLM_API_URL = os.environ.get("OSS_CRS_LLM_API_URL")
-OSS_CRS_LLM_API_KEY = os.environ.get("OSS_CRS_LLM_API_KEY")
+OSS_CRS_LLM_API_KEY = open(os.environ["OSS_CRS_LLM_API_KEY_FILE"]).read().strip() if os.environ.get("OSS_CRS_LLM_API_KEY_FILE") else os.environ.get("OSS_CRS_LLM_API_KEY")
 
 if OSS_CRS_LLM_API_URL:
     # Configure litellm to route through the oss-crs LiteLLM proxy
